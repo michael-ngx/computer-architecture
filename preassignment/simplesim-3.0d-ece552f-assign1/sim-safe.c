@@ -66,15 +66,10 @@
 #include "sim.h"
 
 /* ECE552 Pre-Assignment - BEGIN CODE*/
-static counter_t reg_ready[MD_TOTAL_REGS];
+static counter_t reg_ready_preasm[MD_TOTAL_REGS];
 static counter_t sim_num_lduh = 0;
 static counter_t sim_num_loads = 0;
 /* ECE552 Pre-Assignment - END CODE*/
-
-/* ECE552 Assignment 1 - STATS COUNTERS - BEGIN */
-static counter_t sim_num_RAW_hazard_q1;
-static counter_t sim_num_RAW_hazard_q2;
-/* ECE552 Assignment 1 - STATS COUNTERS - END */
 
 /*
  * This file implements a functional simulator.  This functional simulator is
@@ -152,24 +147,6 @@ sim_reg_stats(struct stat_sdb_t *sdb)
         "load use fraction",
         "sim_num_lduh / sim_num_insn", NULL);
   /* ECE552 Pre-Assignment - END CODE*/
-
-  /* ECE552 Assignment 1 - BEGIN CODE */
-  stat_reg_counter(sdb, "sim_num_RAW_hazard_q1",
-		   "total number of RAW hazards (q1)",
-		   &sim_num_RAW_hazard_q1, sim_num_RAW_hazard_q1, NULL);
-
-  stat_reg_counter(sdb, "sim_num_RAW_hazard_q2",
-		   "total number of RAW hazards (q2)",
-		   &sim_num_RAW_hazard_q2, sim_num_RAW_hazard_q2, NULL);
-
-  stat_reg_formula(sdb, "CPI_from_RAW_hazard_q1",
-		   "CPI from RAW hazard (q1)",
-		   "1" /* ECE552 - MUST ADD YOUR FORMULA */, NULL);
-
-  stat_reg_formula(sdb, "CPI_from_RAW_hazard_q2",
-		   "CPI from RAW hazard (q2)",
-		   "1" /* ECE552 - MUST ADD YOUR FORMULA */, NULL);
-  /* ECE552 Assignment 1 - END CODE */
 
   ld_reg_stats(sdb);
   mem_reg_stats(mem, sdb);
@@ -423,8 +400,9 @@ sim_main(void)
       regs.regs_PC = regs.regs_NPC;
       regs.regs_NPC += sizeof(md_inst_t);
       
+      /*************************************/
       /* ECE552 Pre-Assignment - BEGIN CODE*/
-
+      /*************************************/
       if ( (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_LOAD) ) {
         sim_num_loads++;
       }
@@ -433,9 +411,8 @@ sim_main(void)
       {
         int i;
         for (i = 0; i < 3; i++) {
-          if (r_in[i] != DNA && reg_ready [r_in [i]] > sim_num_insn) {
-            if ((i == 0) && (MD_OP_FLAGS(op) & F_MEM) &&
-              (MD_OP_FLAGS(op) & F_STORE)) {
+          if (r_in[i] != DNA && reg_ready_preasm[r_in[i]] > sim_num_insn) {
+            if ((i == 0) && (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_STORE)) {
               continue;
             }
             sim_num_lduh++;
@@ -447,15 +424,13 @@ sim_main(void)
       // If Load from memory -> Record at which sim_num_insn will the register be ready
       if ((MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_LOAD)) {
         if (r_out[0] != DNA)
-          reg_ready[r_out[0]] = sim_num_insn + 2;
+          reg_ready_preasm[r_out[0]] = sim_num_insn + 2;
         if (r_out[1] != DNA)
-          reg_ready[r_out[1]] = sim_num_insn + 2;
+          reg_ready_preasm[r_out[1]] = sim_num_insn + 2;
       }
-
       /* ECE552 Pre-Assignment - END CODE*/
 
       /* finish early? */
-      if (max_insts && sim_num_insn >= max_insts)
-	return;
+      if (max_insts && sim_num_insn >= max_insts) return;
     }
 }
