@@ -430,7 +430,8 @@ sim_main(void)
       /* ECE552 Assignment 1 - BEGIN CODE*/
       /*************************************/
       // Q1
-      for (int i = 0; i < 3; i++) {
+      int i;
+      for (i = 0; i < 3; i++) {
         if (r_in[i] != DNA && reg_ready_asm1_q1[r_in[i]] > sim_num_insn) {
           if (reg_ready_asm1_q1[r_in[i]] - sim_num_insn == 1) {
             sim_num_RAW_hazard_q1_1cycle++;
@@ -450,7 +451,7 @@ sim_main(void)
         reg_ready_asm1_q1[r_out[1]] = sim_num_insn + 3;
 
       // Q2
-      for (int i = 0; i < 3; i++) {
+      for (i = 0; i < 3; i++) {
         if (r_in[i] != DNA && reg_ready_asm1_q2[r_in[i]] > sim_num_insn) {
           if ((i == 0) && (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_STORE)) {
             continue;
