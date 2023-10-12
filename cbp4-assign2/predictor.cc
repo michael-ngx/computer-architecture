@@ -9,7 +9,7 @@ void InitPredictor_2bitsat() {
 }
 
 bool GetPrediction_2bitsat(UINT32 PC) {
-  if (twoBitSat < 2) {
+  if (twoBitSat <= 1) {
     return NOT_TAKEN;
   }else {
     return TAKEN;
