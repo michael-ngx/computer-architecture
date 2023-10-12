@@ -3,18 +3,25 @@
 /////////////////////////////////////////////////////////////
 // 2bitsat
 /////////////////////////////////////////////////////////////
-
+UINT32 twoBitSat = 0;
+const UINT32 MAX_VALUE = 3;
 void InitPredictor_2bitsat() {
-
 }
 
 bool GetPrediction_2bitsat(UINT32 PC) {
-
-  return TAKEN;
+  if (twoBitSat < 2) {
+    return NOT_TAKEN;
+  }else {
+    return TAKEN;
+  }
 }
 
 void UpdatePredictor_2bitsat(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
-
+    if(resolveDir == predDir) {
+        SatIncrement(twoBitSat, MAX_VALUE);
+    }else{
+        SatDecrement(twoBitSat);
+    }
 }
 
 /////////////////////////////////////////////////////////////
