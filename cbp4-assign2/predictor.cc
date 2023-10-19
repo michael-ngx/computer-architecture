@@ -3,20 +3,31 @@
 /////////////////////////////////////////////////////////////
 // 2bitsat
 /////////////////////////////////////////////////////////////
-static UINT32 twoBitSat = 0;
 static const UINT32 MAX_VALUE = 3; // 0: NN, 1: NT, 2: TN, 3: TT
 
-void InitPredictor_2bitsat() {
-}
+// (8192 bits) / (UINT32 per entry) = 256 entries (8 bits)
+// (UINT32 per entry / 2 bits per prediction) = 16 2bit predictions per entry (4 bits)
+static const PC_BITS = 12;
+static UINT32 2bitsat_prediction_table[256] = {0};
+
+void InitPredictor_2bitsat() {}
 
 bool GetPrediction_2bitsat(UINT32 PC) {
-  if (twoBitSat <= 1) return NOT_TAKEN;
+  UINT32 prediction = 2bitsat_prediction_table[(PC & 0xFF0) >> 4] & (0b11 << (2 * (PC & 0xF)));
+  if (prediction <= 1) return NOT_TAKEN;
   else return TAKEN;
 }
 
 void UpdatePredictor_2bitsat(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
-  if (resolveDir == TAKEN) SatIncrement(twoBitSat, MAX_VALUE);
-  else SatDecrement(twoBitSat);
+  UINT32 predicted = 2bitsat_prediction_table[(PC & 0xFF0) >> 4] & (0b11 << (2 * (PC & 0xF)));
+  UINT32 updated;
+  if (resolveDir == TAKEN) {
+    updated = SatIncrement(predicted, MAX_VALUE);
+  }
+  else {
+    updated = SatDecrement(predicted);
+  }
+  2bitsat_prediction_table[(PC & 0xFF0) >> 4] |= (updated << (2 * (PC & 0xF)));
 }
 
 /////////////////////////////////////////////////////////////
