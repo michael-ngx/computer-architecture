@@ -60,13 +60,11 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 
 /////////////////////////////////////////////////////////////
 // openend - ver 1: PPM-like, tag-based BP (avg 6.9)
+// Based on: https://jilp.org/vol7/v7paper10.pdf
 /////////////////////////////////////////////////////////////
 static const UINT32 MAX_COUNTER_CUSTOM = 7;  // 3-bit counter
 static uint64_t global_history = 0;
-static INT32 X = 0; // Last chosen bank
-
-// static UINT32 base[4096] = {0};  // Each entry should be 4 bits
-// static UINT32 banks[4][1024] = {0}; // Each entry should be 12 bits
+static INT32 X = -1; // Last chosen bank
 
 static std::vector<std::tuple<UINT32,UINT32>> base(4096, {0,0});
 static std::vector<std::vector<std::tuple<UINT32,UINT32,UINT32>>> banks(
@@ -79,7 +77,8 @@ static std::vector<std::vector<std::tuple<UINT32,UINT32,UINT32>>> banks(
 
 // 8 bits
 UINT32 get_tag(UINT32 PC) {
-  return (PC & 0xFF) ^ (global_history & 0xFF);
+  return (PC & 0xFF) ^ (global_history & 0xFF) ^ ((global_history & 0xFF00) >> 8) ^ 
+          ((global_history & 0xFF0000) >> 16) ^ ((global_history & 0xFF000000) >> 32);
 }
 
 // 10 bits
@@ -97,6 +96,8 @@ UINT32 get_index(UINT32 PC, INT32 bank) {
 
 void InitPredictor_openend() {
   std::srand(static_cast<unsigned>(std::time(nullptr)));
+  global_history = 0;
+  X = -1;
 }
 
 bool GetPrediction_openend(UINT32 PC) {
@@ -158,32 +159,3 @@ void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 br
   // Update global history
   global_history = (global_history << 1) | (resolveDir == TAKEN ? TAKEN : NOT_TAKEN);
 }
-
-/*
-bool GetPrediction_openend(UINT32 PC) {
-  index = get_index(PC,4);
-  if ((banks[3][index] & 0x1FE) >> 1 == get_tag(PC)){
-    X = 4;
-    return ((banks[3][index] & 0xE00) >> 9) >= 4 ? TAKEN : NOT_TAKEN;
-  }
-  index = get_index(PC,3);
-  if ((banks[2][index] & 0x1FE) >> 1 == get_tag(PC)) {
-    X = 3;
-    return ((banks[2][index] & 0xE00) >> 9) >= 4 ? TAKEN : NOT_TAKEN;
-  }
-  index = get_index(PC,2);
-  if ((banks[1][index] & 0x1FE) >> 1 == get_tag(PC)) {
-    X = 2;
-    return ((banks[1][index] & 0xE00) >> 9) >= 4 ? TAKEN : NOT_TAKEN;
-  }
-  index = get_index(PC,1);
-  if ((banks[0][index] & 0x1FE) >> 1 == get_tag(PC)) {
-    X = 1;
-    return ((banks[0][index] & 0xE00) >> 9) >= 4 ? TAKEN : NOT_TAKEN;
-  }
-  X = 0;
-  return (((base[PC & 0xFFF] & 0b1110) >> 1) >= 4) ? TAKEN : NOT_TAKEN;
-}*/
-
-// void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
-// }
