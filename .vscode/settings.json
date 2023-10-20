@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "cstdio": "cpp",
+        "cstdlib": "cpp",
+        "iostream": "cpp",
+        "string": "cpp",
+        "tuple": "cpp"
+    }
+}
