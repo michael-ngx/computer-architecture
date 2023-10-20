@@ -59,7 +59,7 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 }
 
 /////////////////////////////////////////////////////////////
-// openend
+// openend - ver 1: PPM-like, tag-based BP (avg 6.9)
 /////////////////////////////////////////////////////////////
 static const UINT32 MAX_COUNTER_CUSTOM = 7;  // 3-bit counter
 static uint64_t global_history = 0;
@@ -79,8 +79,7 @@ static std::vector<std::vector<std::tuple<UINT32,UINT32,UINT32>>> banks(
 
 // 8 bits
 UINT32 get_tag(UINT32 PC) {
-  return (PC & 0xFF) ^ (global_history & 0xFF) ^ ((global_history & 0xFF00) >> 8) ^ 
-          ((global_history & 0xFF0000) >> 16) ^ ((global_history & 0xFF000000) >> 32);
+  return (PC & 0xFF) ^ (global_history & 0xFF);
 }
 
 // 10 bits
@@ -184,27 +183,7 @@ bool GetPrediction_openend(UINT32 PC) {
   }
   X = 0;
   return (((base[PC & 0xFFF] & 0b1110) >> 1) >= 4) ? TAKEN : NOT_TAKEN;
-}
-
-void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
-  // Update 3 bit counter of X
-  if (resolveDir) {
-    if (X == 0) { 
-      UINT32 new_val = SatIncrement((base[X] & 0b1110) >> 1, MAX_COUNTER_CUSTOM);
-      base[X] = new_val;
-    } else {
-      UINT32 new_val = SatIncrement((banks[X][index] & 0xE00) >> 9, MAX_COUNTER_CUSTOM);
-      banks[X][index] /// TODO: Need to get rid of the first 3 bits before plugging in the new prediction numebr 
-    }
-  } else {
-    if (X == 0) {
-      UINT32 new_val = SatDecrement((base[X] & 0b1110) >> 1);
-      base[X] = new_val;
-    } else {
-
-    }
-  }
-    
-
 }*/
 
+// void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
+// }
