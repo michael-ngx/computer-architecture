@@ -130,6 +130,47 @@ static bool is_simulation_done(counter_t sim_insn) {
 void CDB_To_retire(int current_cycle) {
 
   /* ECE552 Assignment 3 - BEGIN CODE */
+  if (commonDataBus == NULL) {
+    return;
+  }
+
+  // Clear Q tags in other instructions
+  for (int i = 0; i < RESERV_INT_SIZE; i++) {
+    instruction_t* instr = reservINT[i];
+    if (instr == NULL) continue;
+    if (instr->Q[0] == commonDataBus) {
+      instr->Q[0] = NULL;
+    }
+    if (instr->Q[1] == commonDataBus) {
+      instr->Q[1] = NULL;
+    }
+    if (instr->Q[2] == commonDataBus) {
+      instr->Q[2] = NULL;
+    }
+  }
+  for (int i = 0; i < RESERV_FP_SIZE; i++) {
+    instruction_t* instr = reservFP[i];
+    if (instr == NULL) continue;
+    if (instr->Q[0] == commonDataBus) {
+      instr->Q[0] = NULL;
+    }
+    if (instr->Q[1] == commonDataBus) {
+      instr->Q[1] = NULL;
+    }
+    if (instr->Q[2] == commonDataBus) {
+      instr->Q[2] = NULL;
+    }
+  }
+
+  // Clear entry in map table
+  for (int i = 0; i < MD_TOTAL_REGS; i++) {
+    if (map_table[i] == commonDataBus) {
+      map_table[i] = NULL;
+      break;
+    }
+  }
+
+  commonDataBus = NULL;
   /* ECE552 Assignment 3 - END CODE */
 }
 
@@ -145,6 +186,91 @@ void CDB_To_retire(int current_cycle) {
 void execute_To_CDB(int current_cycle) {
 
   /* ECE552 Assignment 3 - BEGIN CODE */
+
+  // Check if any instructions are ready to be written to CDB
+  // Record all instructions that are ready into ready_instrs array
+  instruction_t* ready_instrs[RESERV_INT_SIZE + RESERV_FP_SIZE];
+  int ready_count = 0;
+  for (int i = 0; i < FU_INT_SIZE; i++) {
+    instruction_t* instr = fuINT[i];
+    if (instr == NULL) continue;
+    if (instr->tom_execute_cycle + FU_INT_LATENCY == current_cycle) {
+      ready_instrs[ready_count++] = instr;
+    }
+  }
+  for (int i = 0; i < FU_FP_SIZE; i++) {
+    instruction_t* instr = fuFP[i];
+    if (instr == NULL) continue;
+    if (instr->tom_execute_cycle + FU_FP_LATENCY == current_cycle) {
+      ready_instrs[ready_count++] = instr;
+    }
+  }
+
+  // Sort instructions in ready_instrs by oldest first (smaller index)
+  for (int i = 0; i < ready_count; i++) {
+    for (int j = i+1; j < ready_count; j++) {
+      if (ready_instrs[i]->index > ready_instrs[j]->index) {
+        instruction_t* temp = ready_instrs[i];
+        ready_instrs[i] = ready_instrs[j];
+        ready_instrs[j] = temp;
+      }
+    }
+  }
+
+  // Only have 1 CDB, so only write the first non-store instruction in ready_instrs
+  // All finished stores should be removed from reservation stations and functional units
+  // (they do not do anything to map table since no output register)
+
+  instruction_t* clear_rs_fu_instrs[RESERV_INT_SIZE + RESERV_FP_SIZE];
+  int clear_rs_fu_count = 0;
+  bool non_store_found = false;
+
+  for (int i = 0; i < ready_count; i++) {
+    instruction_t* instr = ready_instrs[i];
+    if (IS_STORE(instr->op)) {
+      clear_rs_fu_instrs[clear_rs_fu_count++] = instr;
+    } 
+    else if (!non_store_found) {
+      commonDataBus = instr;
+      instr->tom_cdb_cycle = current_cycle;
+      clear_rs_fu_instrs[clear_rs_fu_count++] = instr;
+      non_store_found = true;
+    }
+  }
+
+  // Clear reservation stations and functional units
+  for (int i = 0; i < clear_rs_fu_count; i++) {
+    instruction_t* instr = clear_rs_fu_instrs[i];
+    if (USES_INT_FU(instr->op)) {
+      for (int j = 0; j < RESERV_INT_SIZE; j++) {
+        if (reservINT[j] == instr) {
+          reservINT[j] = NULL;
+          break;
+        }
+      }
+      for (int j = 0; j < FU_INT_SIZE; j++) {
+        if (fuINT[j] == instr) {
+          fuINT[j] = NULL;
+          break;
+        }
+      }
+    }
+    else if (USES_FP_FU(instr->op)) {
+      for (int j = 0; j < RESERV_FP_SIZE; j++) {
+        if (reservFP[j] == instr) {
+          reservFP[j] = NULL;
+          break;
+        }
+      }
+      for (int j = 0; j < FU_FP_SIZE; j++) {
+        if (fuFP[j] == instr) {
+          fuFP[j] = NULL;
+          break;
+        }
+      }
+    }
+  }
+  
   /* ECE552 Assignment 3 - END CODE */
 }
 
@@ -171,22 +297,25 @@ void issue_To_execute(int current_cycle) {
   }
 
   if (int_fu_free > 0) {
-        // Get all instructions that are ready, put into ready_instrs array
+        // Get all instructions that are READY AND IS NOT YET EXECUTED, put into ready_instrs array
         instruction_t* ready_instrs[RESERV_INT_SIZE];
+        int ready_count = 0;
         for (i = 0; i < RESERV_INT_SIZE; i++) {
           instruction_t* instr = reservINT[i];
           if (instr == NULL) continue;
+
+          // Need to add the check if this instruction is already issued to execute before
+          if (instr->tom_execute_cycle != 0) continue;
+
           // Check if all RAW dependences have been resolved
           if (instr->Q[0] == NULL && instr->Q[1] == NULL && instr->Q[2] == NULL) {
-            ready_instrs[i] = instr;
+            ready_instrs[ready_count++] = instr;
           }
         }
 
         // Sort instructions in ready_instrs by oldest first (smaller index)
-        for (i = 0; i < RESERV_INT_SIZE; i++) {
-          if (ready_instrs[i] == NULL) continue;
-          for (int j = i+1; j < RESERV_INT_SIZE; j++) {
-            if (ready_instrs[j] == NULL) continue;
+        for (i = 0; i < ready_count; i++) {
+          for (int j = i+1; j < ready_count; j++) {
             if (ready_instrs[i]->index > ready_instrs[j]->index) {
               instruction_t* temp = ready_instrs[i];
               ready_instrs[i] = ready_instrs[j];
@@ -196,7 +325,7 @@ void issue_To_execute(int current_cycle) {
         }
 
         // Move instructions to FUs (start executing this instruction)
-        for (i = 0; i < RESERV_INT_SIZE; i++) {
+        for (i = 0; i < ready_count; i++) {
           instruction_t* instr = ready_instrs[i];
           if (instr == NULL) continue;
           // Assign to first available FU
@@ -222,20 +351,23 @@ void issue_To_execute(int current_cycle) {
   if (fp_fu_free > 0) {
         // Get all instructions that are ready, put into ready_instrs array
         instruction_t* ready_instrs[RESERV_FP_SIZE];
+        int ready_count = 0;
         for (i = 0; i < RESERV_FP_SIZE; i++) {
           instruction_t* instr = reservFP[i];
           if (instr == NULL) continue;
+          
+          // Need to add the check if this instruction is already issued to execute before
+          if (instr->tom_execute_cycle != 0) continue;
+
           // Check if all RAW dependences have been resolved
           if (instr->Q[0] == NULL && instr->Q[1] == NULL && instr->Q[2] == NULL) {
-            ready_instrs[i] = instr;
+            ready_instrs[ready_count++] = instr;
           }
         }
 
         // Sort instructions in ready_instrs by oldest first (smaller index)
-        for (i = 0; i < RESERV_FP_SIZE; i++) {
-          if (ready_instrs[i] == NULL) continue;
-          for (int j = i+1; j < RESERV_FP_SIZE; j++) {
-            if (ready_instrs[j] == NULL) continue;
+        for (i = 0; i < ready_count; i++) {
+          for (int j = i+1; j < ready_count; j++) {
             if (ready_instrs[i]->index > ready_instrs[j]->index) {
               instruction_t* temp = ready_instrs[i];
               ready_instrs[i] = ready_instrs[j];
@@ -245,7 +377,7 @@ void issue_To_execute(int current_cycle) {
         }
 
         // Move instructions to FUs
-        for (i = 0; i < RESERV_FP_SIZE; i++) {
+        for (i = 0; i < ready_count; i++) {
           instruction_t* instr = ready_instrs[i];
           if (instr == NULL) continue;
           // Assign to first available FU
@@ -308,22 +440,19 @@ void dispatch_To_issue(int current_cycle) {
     }
   }
   else if (IS_UNCOND_CTRL(instr->op)) {
-
+    // No hazard, but do nothing
   }
   else if (IS_COND_CTRL(instr->op)) {
-
+    // No hazard, but do nothing
   }
   else {
     // Should never get here
     assert(1);
   }
-
-  // NOTE: A fetched instruction can be dispatched (complete D) immediately 
-  // if a reservation station entry will be available in the next cycle.
   
   if (hazard) return;
 
-  // If a hazard was not detected, remove the instruction from the queue
+  // If a hazard was not detected, remove the instruction from the IFQ
   // This means the instruction has ALREADY been moved to a reservation station
   instr->Q[0] = map_table[instr->r_in[0]];
   instr->Q[1] = map_table[instr->r_in[1]];
@@ -344,28 +473,26 @@ void dispatch_To_issue(int current_cycle) {
  * Returns:
  * 	None
  */
-void fetch(instruction_trace_t* trace, int current_cycle) {
+void fetch(instruction_trace_t* trace) {
+
   /* ECE552 Assignment 3 - BEGIN CODE */
-  if (instr_queue_size < INSTR_QUEUE_SIZE) {
-    // Fetch until no trap instructions is found
-    instruction_t* instr;
-    while (true) {
-      instr = get_instr(trace, fetch_index++);
-      instr->index = index++;
-      if (IS_TRAP(instr->op)) {
-        continue;
-      }
-    }
-    
-    // Move all current instructions in the queue up one (guaranteed to be space)
-    int i;
-    for (i = instr_queue_size; i > 0; i--) {
-      instr_queue[i] = instr_queue[i-1];
-    }
-    instr_queue[0] = instr;
-    instr->tom_dispatch_cycle = current_cycle;
-    instr_queue_size++;
+
+  // Fetch until no trap instructions is found
+  instruction_t* instr;
+  do {
+    instr = get_instr(trace, fetch_index++);
+    instr->index = index++;
+  } while (instr != NULL && IS_TRAP(instr->op));
+  if (instr == NULL) return;
+  
+  // Move all current instructions in the queue up one
+  int i;
+  for (i = instr_queue_size; i > 0; i--) {
+    instr_queue[i] = instr_queue[i-1];
   }
+  instr_queue[0] = instr;
+  instr_queue_size++;
+  
   /* ECE552 Assignment 3 - END CODE */
 }
 
@@ -381,7 +508,11 @@ void fetch(instruction_trace_t* trace, int current_cycle) {
 void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 
   /* ECE552 Assignment 3 - BEGIN CODE */
-  fetch(trace, current_cycle);
+  if (instr_queue_size < INSTR_QUEUE_SIZE) {
+    int save = instr_queue_size;
+    fetch(trace);
+    if (instr_queue_size > save) instr_queue[0]->tom_dispatch_cycle = current_cycle;
+  }
   /* ECE552 Assignment 3 - END CODE */
 }
 
