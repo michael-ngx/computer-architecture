@@ -99,7 +99,8 @@ static instruction_t* map_table[MD_TOTAL_REGS];
 
 //the index of the last instruction fetched
 static int fetch_index = 0;
-
+//the unique index value of the instruction
+static int index = 1;
 
 /* 
  * Description: 
@@ -115,6 +116,7 @@ static bool is_simulation_done(counter_t sim_insn) {
   /* ECE552 Assignment 3 - BEGIN CODE */
 
   return true; //ECE552: you can change this as needed; we've added this so the code provided to you compiles
+  /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -128,7 +130,7 @@ static bool is_simulation_done(counter_t sim_insn) {
 void CDB_To_retire(int current_cycle) {
 
   /* ECE552 Assignment 3 - BEGIN CODE */
-
+  /* ECE552 Assignment 3 - END CODE */
 }
 
 
@@ -143,7 +145,7 @@ void CDB_To_retire(int current_cycle) {
 void execute_To_CDB(int current_cycle) {
 
   /* ECE552 Assignment 3 - BEGIN CODE */
-
+  /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -159,6 +161,104 @@ void execute_To_CDB(int current_cycle) {
 void issue_To_execute(int current_cycle) {
 
   /* ECE552 Assignment 3 - BEGIN CODE */
+
+  /* INTEGER */
+  int int_fu_free = 0;
+  for (int i = 0; i < FU_INT_SIZE; i++) {
+    if (fuINT[i] != NULL) {
+      int_fu_free++;
+    }
+  }
+
+  if (int_fu_free > 0) {
+        // Get all instructions that are ready, put into ready_instrs array
+        instruction_t* ready_instrs[RESERV_INT_SIZE];
+        for (i = 0; i < RESERV_INT_SIZE; i++) {
+          instruction_t* instr = reservINT[i];
+          if (instr == NULL) continue;
+          // Check if all RAW dependences have been resolved
+          if (instr->Q[0] == NULL && instr->Q[1] == NULL && instr->Q[2] == NULL) {
+            ready_instrs[i] = instr;
+          }
+        }
+
+        // Sort instructions in ready_instrs by oldest first (smaller index)
+        for (i = 0; i < RESERV_INT_SIZE; i++) {
+          if (ready_instrs[i] == NULL) continue;
+          for (int j = i+1; j < RESERV_INT_SIZE; j++) {
+            if (ready_instrs[j] == NULL) continue;
+            if (ready_instrs[i]->index > ready_instrs[j]->index) {
+              instruction_t* temp = ready_instrs[i];
+              ready_instrs[i] = ready_instrs[j];
+              ready_instrs[j] = temp;
+            }
+          }
+        }
+
+        // Move instructions to FUs (start executing this instruction)
+        for (i = 0; i < RESERV_INT_SIZE; i++) {
+          instruction_t* instr = ready_instrs[i];
+          if (instr == NULL) continue;
+          // Assign to first available FU
+          for (int j = 0; j < FU_INT_SIZE; j++) {
+            if (fuINT[j] == NULL) {
+              fuINT[j] = instr;
+              instr->tom_execute_cycle = current_cycle;
+              break;
+            }
+          }
+        }
+  }
+
+
+  /* FLOAT */
+  int fp_fu_free = 0;
+  for (int i = 0; i < FU_FP_SIZE; i++) {
+    if (fuFP[i] != NULL) {
+      fp_fu_free++;
+    }
+  }
+
+  if (fp_fu_free > 0) {
+        // Get all instructions that are ready, put into ready_instrs array
+        instruction_t* ready_instrs[RESERV_FP_SIZE];
+        for (i = 0; i < RESERV_FP_SIZE; i++) {
+          instruction_t* instr = reservFP[i];
+          if (instr == NULL) continue;
+          // Check if all RAW dependences have been resolved
+          if (instr->Q[0] == NULL && instr->Q[1] == NULL && instr->Q[2] == NULL) {
+            ready_instrs[i] = instr;
+          }
+        }
+
+        // Sort instructions in ready_instrs by oldest first (smaller index)
+        for (i = 0; i < RESERV_FP_SIZE; i++) {
+          if (ready_instrs[i] == NULL) continue;
+          for (int j = i+1; j < RESERV_FP_SIZE; j++) {
+            if (ready_instrs[j] == NULL) continue;
+            if (ready_instrs[i]->index > ready_instrs[j]->index) {
+              instruction_t* temp = ready_instrs[i];
+              ready_instrs[i] = ready_instrs[j];
+              ready_instrs[j] = temp;
+            }
+          }
+        }
+
+        // Move instructions to FUs
+        for (i = 0; i < RESERV_FP_SIZE; i++) {
+          instruction_t* instr = ready_instrs[i];
+          if (instr == NULL) continue;
+          // Assign to first available FU
+          for (int j = 0; j < FU_FP_SIZE; j++) {
+            if (fuFP[j] == NULL) {
+              fuFP[j] = instr;
+              instr->tom_execute_cycle = current_cycle;
+              break;
+            }
+          }
+        }
+  }
+  /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -186,6 +286,7 @@ void dispatch_To_issue(int current_cycle) {
     for (i = 0; i < RESERV_INT_SIZE; i++) {
       if (reservINT[i] == NULL) {
         reservINT[i] = instr;
+        instr->tom_issue_cycle = current_cycle;
         break;
       }
     }
@@ -198,6 +299,7 @@ void dispatch_To_issue(int current_cycle) {
     for (i = 0; i < RESERV_FP_SIZE; i++) {
       if (reservFP[i] == NULL) {
         reservFP[i] = instr;
+        instr->tom_issue_cycle = current_cycle;
         break;
       }
     }
@@ -231,6 +333,7 @@ void dispatch_To_issue(int current_cycle) {
 
   instr_queue[instr_queue_size-1] = NULL;
   instr_queue_size--;
+  /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -245,8 +348,10 @@ void fetch(instruction_trace_t* trace, int current_cycle) {
   /* ECE552 Assignment 3 - BEGIN CODE */
   if (instr_queue_size < INSTR_QUEUE_SIZE) {
     // Fetch until no trap instructions is found
+    instruction_t* instr;
     while (true) {
-      instruction_t* instr = get_instr(trace, fetch_index++);
+      instr = get_instr(trace, fetch_index++);
+      instr->index = index++;
       if (IS_TRAP(instr->op)) {
         continue;
       }
