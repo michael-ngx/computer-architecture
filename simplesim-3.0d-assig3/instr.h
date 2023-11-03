@@ -27,7 +27,7 @@ typedef struct my_instruction
 
 }instruction_t;
 
-#define INSTR_TRACE_SIZE 16384
+#define INSTR_TRACE_SIZE 1000000
 
 typedef struct my_instruction_list
 {

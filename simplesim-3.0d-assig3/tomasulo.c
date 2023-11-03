@@ -23,15 +23,15 @@
 
 /* PARAMETERS OF THE TOMASULO'S ALGORITHM */
 
-#define INSTR_QUEUE_SIZE         10
+#define INSTR_QUEUE_SIZE         16
 
-#define RESERV_INT_SIZE    4
-#define RESERV_FP_SIZE     2
-#define FU_INT_SIZE        2
+#define RESERV_INT_SIZE    5
+#define RESERV_FP_SIZE     3
+#define FU_INT_SIZE        3
 #define FU_FP_SIZE         1
 
-#define FU_INT_LATENCY     4
-#define FU_FP_LATENCY      9
+#define FU_INT_LATENCY     5
+#define FU_FP_LATENCY      7
 
 /* IDENTIFYING INSTRUCTIONS */
 
@@ -81,6 +81,7 @@
 static instruction_t* instr_queue[INSTR_QUEUE_SIZE];
 //number of instructions in the instruction queue
 static int instr_queue_size = 0;
+static int instr_queue_head = 0;
 
 //reservation stations (each reservation station entry contains a pointer to an instruction)
 static instruction_t* reservINT[RESERV_INT_SIZE];
@@ -99,11 +100,6 @@ static instruction_t* map_table[MD_TOTAL_REGS];
 //the index of the last instruction fetched
 static int fetch_index = 0;
 
-/* FUNCTIONAL UNITS */
-
-
-/* RESERVATION STATIONS */
-
 
 /* 
  * Description: 
@@ -116,7 +112,7 @@ static int fetch_index = 0;
  */
 static bool is_simulation_done(counter_t sim_insn) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+  /* ECE552 Assignment 3 - BEGIN CODE */
 
   return true; //ECE552: you can change this as needed; we've added this so the code provided to you compiles
 }
@@ -131,7 +127,7 @@ static bool is_simulation_done(counter_t sim_insn) {
  */
 void CDB_To_retire(int current_cycle) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+  /* ECE552 Assignment 3 - BEGIN CODE */
 
 }
 
@@ -146,7 +142,7 @@ void CDB_To_retire(int current_cycle) {
  */
 void execute_To_CDB(int current_cycle) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+  /* ECE552 Assignment 3 - BEGIN CODE */
 
 }
 
@@ -162,7 +158,7 @@ void execute_To_CDB(int current_cycle) {
  */
 void issue_To_execute(int current_cycle) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+  /* ECE552 Assignment 3 - BEGIN CODE */
 }
 
 /* 
@@ -175,7 +171,66 @@ void issue_To_execute(int current_cycle) {
  */
 void dispatch_To_issue(int current_cycle) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+  /* ECE552 Assignment 3 - BEGIN CODE */
+  if (instr_queue_size == 0) {
+    return;
+  }
+  // Always try to dispatch the oldest instruction first
+  instruction_t* instr = instr_queue[instr_queue_size-1];
+
+  // Default to no hazard
+  bool hazard = false;
+
+  if (USES_INT_FU(instr->op)) {
+    int i;
+    for (i = 0; i < RESERV_INT_SIZE; i++) {
+      if (reservINT[i] == NULL) {
+        reservINT[i] = instr;
+        break;
+      }
+    }
+    if (i == RESERV_INT_SIZE) {
+      hazard = true;
+    }
+  }
+  else if (USES_FP_FU(instr->op)) {
+    int i;
+    for (i = 0; i < RESERV_FP_SIZE; i++) {
+      if (reservFP[i] == NULL) {
+        reservFP[i] = instr;
+        break;
+      }
+    }
+    if (i == RESERV_FP_SIZE) {
+      hazard = true;
+    }
+  }
+  else if (IS_UNCOND_CTRL(instr->op)) {
+
+  }
+  else if (IS_COND_CTRL(instr->op)) {
+
+  }
+  else {
+    // Should never get here
+    assert(1);
+  }
+
+  // NOTE: A fetched instruction can be dispatched (complete D) immediately 
+  // if a reservation station entry will be available in the next cycle.
+  
+  if (hazard) return;
+
+  // If a hazard was not detected, remove the instruction from the queue
+  // This means the instruction has ALREADY been moved to a reservation station
+  instr->Q[0] = map_table[instr->r_in[0]];
+  instr->Q[1] = map_table[instr->r_in[1]];
+  instr->Q[2] = map_table[instr->r_in[2]];
+  map_table[instr->r_out[0]] = instr;
+  map_table[instr->r_out[1]] = instr;
+
+  instr_queue[instr_queue_size-1] = NULL;
+  instr_queue_size--;
 }
 
 /* 
@@ -186,9 +241,27 @@ void dispatch_To_issue(int current_cycle) {
  * Returns:
  * 	None
  */
-void fetch(instruction_trace_t* trace) {
-
-  /* ECE552: YOUR CODE GOES HERE */
+void fetch(instruction_trace_t* trace, int current_cycle) {
+  /* ECE552 Assignment 3 - BEGIN CODE */
+  if (instr_queue_size < INSTR_QUEUE_SIZE) {
+    // Fetch until no trap instructions is found
+    while (true) {
+      instruction_t* instr = get_instr(trace, fetch_index++);
+      if (IS_TRAP(instr->op)) {
+        continue;
+      }
+    }
+    
+    // Move all current instructions in the queue up one (guaranteed to be space)
+    int i;
+    for (i = instr_queue_size; i > 0; i--) {
+      instr_queue[i] = instr_queue[i-1];
+    }
+    instr_queue[0] = instr;
+    instr->tom_dispatch_cycle = current_cycle;
+    instr_queue_size++;
+  }
+  /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -202,9 +275,9 @@ void fetch(instruction_trace_t* trace) {
  */
 void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 
-  fetch(trace);
-
-  /* ECE552: YOUR CODE GOES HERE */
+  /* ECE552 Assignment 3 - BEGIN CODE */
+  fetch(trace, current_cycle);
+  /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -227,11 +300,11 @@ counter_t runTomasulo(instruction_trace_t* trace)
 
   //initialize reservation stations
   for (i = 0; i < RESERV_INT_SIZE; i++) {
-      reservINT[i] = NULL;
+    reservINT[i] = NULL;
   }
 
   for(i = 0; i < RESERV_FP_SIZE; i++) {
-      reservFP[i] = NULL;
+    reservFP[i] = NULL;
   }
 
   //initialize functional units
@@ -251,13 +324,17 @@ counter_t runTomasulo(instruction_trace_t* trace)
   
   int cycle = 1;
   while (true) {
+    /* ECE552 Assignment 3 - BEGIN CODE */
+    CDB_To_retire(cycle);
+    execute_To_CDB(cycle);
+    issue_To_execute(cycle);
+    dispatch_To_issue(cycle);
+    fetch_To_dispatch(trace, cycle);
+    /* ECE552 Assignment 3 - END CODE */
+    cycle++;
 
-     /* ECE552: YOUR CODE GOES HERE */
-
-     cycle++;
-
-     if (is_simulation_done(sim_num_insn))
-        break;
+    if (is_simulation_done(sim_num_insn))
+      break;
   }
   
   return cycle;
