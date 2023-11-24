@@ -9,7 +9,7 @@
 //         char* arr = (char*)malloc(sizeof(char) * 1000000);
 //         for (i = 0; i < 100000; i++) {
 //                 for (j = 0; j < 800; j += a) {
-//                         arr[j] = (ju % 128);
+//                         arr[j] = (j % 128);
 
 //                         if (a == b) a = b/2;
 //                         else a = b;

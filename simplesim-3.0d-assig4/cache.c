@@ -590,7 +590,7 @@ void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
 /****************************************************************/
 /* Open Ended Prefetcher */
 #define GHB_SIZE 16
-#define RPT_SIZE 1024
+#define RPT_SIZE 16
 
 static int count;
 static md_addr_t* ghb;
