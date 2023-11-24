@@ -507,14 +507,16 @@ cache_reg_stats(struct cache_t *cp,	/* cache instance */
 
 /* ECE552 Assignment 4 - BEGIN CODE */
 
+md_addr_t get_PC();
+
 /* Next Line Prefetcher */
 void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	md_addr_t next_line = CACHE_TAGSET(cp, addr + cp->bsize);
+	md_addr_t pf_addr = CACHE_TAGSET(cp, addr + cp->bsize);
   
   // If there's a cache miss, access (prefetch) the next line
   // Time to access the next line is not important, so we can set it to 0
-  if (cache_probe(cp, tagset_next) == 0){
-    cache_access(cp, Read, next_line, NULL, cp->bsize, 0, NULL, NULL, 1);
+  if (cache_probe(cp, pf_addr) == 0){
+    cache_access(cp, Read, pf_addr, NULL, cp->bsize, 0, NULL, NULL, 1);
   }
 }
 
@@ -524,8 +526,97 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
 }
 
 /* Stride Prefetcher */
+
+// States of the Stride Prefetcher
+typedef enum state_t {
+  INIT = 0,
+  TRANSIENT,
+  STEADY,
+  NO_PREDICTION
+} state_t;
+
+// RPT entry
+typedef struct rpt_entry {
+  md_addr_t tag;
+  md_addr_t prev_addr;	// Last address accessed by this PC
+  int stride;		// Stride between the last two accesses
+  state_t state;
+} rpt_entry;
+
+// RPT
+static rpt_entry* rpt;
+
 void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	; 
+  if (rpt == NULL) {
+    // Using calloc() to initialize all entries to 0 (INIT state)
+    rpt = calloc(cp->prefetch_type, sizeof(rpt_entry));
+    if (rpt == NULL) {
+      fatal("out of virtual memory");
+    }
+  }
+
+  md_addr_t pc = get_PC();
+  int zero_bits = log_base2(sizeof(byte_t)*8);
+  int rpt_index = (pc >> zero_bits) % (cp->prefetch_type);
+  rpt_entry* entry = &(rpt[rpt_index]);
+
+  // Scenario 1
+  if (entry->tag != pc) {
+    entry->stride = 0;
+    entry->state = INIT;
+  }
+  // Scenario 2
+  else {
+    int new_stride = addr - entry->prev_addr;
+    int stride_cond = (new_stride == entry->stride);
+
+    switch (entry->state) {
+      case INIT:
+        if (stride_cond) {
+          entry->state = STEADY;
+        } else {
+          entry->state = TRANSIENT;
+          entry->stride = new_stride;
+        }
+        break;
+
+      case TRANSIENT:
+        if (stride_cond) {
+          entry->state = STEADY;
+        } else {
+          entry->state = NO_PREDICTION;
+          entry->stride = new_stride;
+        }
+        break;
+
+      case STEADY:
+        if (stride_cond) {
+          entry->state = STEADY;
+        } else {
+          entry->state = INIT;
+        }
+       break;
+
+      case NO_PREDICTION:
+        if (stride_cond) {
+          entry->state = TRANSIENT;
+        } else {
+          entry->state = NO_PREDICTION;
+          entry->stride = new_stride;
+        }
+        break;
+    }
+  }
+
+  entry->prev_addr = addr;
+  entry->tag = pc;
+
+  if (entry->state != NO_PREDICTION) {
+    md_addr_t pf_addr = CACHE_TAGSET(cp, addr + entry->stride);
+    if (cache_probe(cp, pf_addr) == 0) {
+      cache_access(cp, Read, pf_addr, NULL, cp->bsize, 0, NULL, NULL, 1);
+    }
+  }
 }
 
 /* ECE552 Assignment 4 - END CODE */
@@ -552,8 +643,6 @@ void generate_prefetch(struct cache_t *cp, md_addr_t addr) {
 	}
 
 }
-
-md_addr_t get_PC();
 
 /* print cache stats */
 void
