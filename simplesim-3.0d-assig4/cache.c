@@ -505,27 +505,10 @@ cache_reg_stats(struct cache_t *cp,	/* cache instance */
 
 }
 
+/********************************************************************************************************************************/
 /* ECE552 Assignment 4 - BEGIN CODE */
 
 md_addr_t get_PC();
-
-/* Next Line Prefetcher */
-void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	md_addr_t pf_addr = CACHE_TAGSET(cp, addr + cp->bsize);
-  
-  // If there's a cache miss, access (prefetch) the next line
-  // Time to access the next line is not important, so we can set it to 0
-  if (cache_probe(cp, pf_addr) == 0){
-    cache_access(cp, Read, pf_addr, NULL, cp->bsize, 0, NULL, NULL, 1);
-  }
-}
-
-/* Open Ended Prefetcher */
-void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	; 
-}
-
-/* Stride Prefetcher */
 
 // States of the Stride Prefetcher
 typedef enum state_t {
@@ -543,30 +526,11 @@ typedef struct rpt_entry {
   state_t state;
 } rpt_entry;
 
-// RPT
-static rpt_entry* rpt;
-
-void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
-  if (rpt == NULL) {
-    // Using calloc() to initialize all entries to 0 (INIT state)
-    rpt = calloc(cp->prefetch_type, sizeof(rpt_entry));
-    if (rpt == NULL) {
-      fatal("out of virtual memory");
-    }
-  }
-
-  md_addr_t pc = get_PC();
-  int zero_bits = log_base2(sizeof(byte_t)*8);
-  int rpt_index = (pc >> zero_bits) % (cp->prefetch_type);
-  rpt_entry* entry = &(rpt[rpt_index]);
-
-  // Scenario 1
+void update_entry(rpt_entry* entry, md_addr_t addr, md_addr_t pc) {
   if (entry->tag != pc) {
     entry->stride = 0;
     entry->state = INIT;
-  }
-  // Scenario 2
-  else {
+  } else {
     int new_stride = addr - entry->prev_addr;
     int stride_cond = (new_stride == entry->stride);
 
@@ -607,9 +571,106 @@ void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
         break;
     }
   }
-
   entry->prev_addr = addr;
   entry->tag = pc;
+}
+
+/****************************************************************/
+/* Next Line Prefetcher */
+void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
+	md_addr_t pf_addr = CACHE_TAGSET(cp, addr + cp->bsize);
+  
+  // If there's a cache miss, access (prefetch) the next line
+  // Time to access the next line is not important, so we can set it to 0
+  if (cache_probe(cp, pf_addr) == 0){
+    cache_access(cp, Read, pf_addr, NULL, cp->bsize, 0, NULL, NULL, 1);
+  }
+}
+
+/****************************************************************/
+/* Open Ended Prefetcher */
+#define GHB_SIZE 16
+#define RPT_SIZE 1024
+
+static int count;
+static md_addr_t* ghb;
+static rpt_entry* rpt_open;
+
+void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
+  if (ghb == NULL && rpt_open == NULL)
+  {
+    count = 0;
+    ghb = calloc(GHB_SIZE, sizeof(md_addr_t));
+    if (ghb == NULL) {
+      fatal("out of virtual memory");
+    }
+
+    rpt_open = calloc(RPT_SIZE, sizeof(rpt_entry));
+    if (rpt_open == NULL) {
+      fatal("out of virtual memory");
+    }
+  }
+	
+  // Update GHB
+	if (count == (GHB_SIZE - 1) && ghb[count] != 0) {		
+		for (int i = 0; i < GHB_SIZE - 1; i++) {
+			ghb[i] = ghb[i + 1];
+		}
+	}
+	ghb[count] = addr;
+	if (count < GHB_SIZE - 1) {
+    count++;
+  }
+
+  // Update RPT (similar to stride prefetcher)
+	md_addr_t pc = get_PC();
+  int zero_bits = log_base2(sizeof(byte_t)*8);
+  int rpt_index = (pc >> zero_bits) % RPT_SIZE;
+  rpt_entry* entry = &(rpt_open[rpt_index]);
+  update_entry(entry, addr, pc);
+
+  // Prefetch directly for STEADY state
+  if (entry->state == STEADY)
+  {
+    md_addr_t pf_addr = CACHE_TAGSET(cp, addr + entry->stride);
+    if (cache_probe(cp, pf_addr) == 0) {
+      cache_access(cp, Read, pf_addr, NULL, cp->bsize, 0, NULL, NULL, 1);
+    }
+  } else {
+    for (int i = 0; i < count; i++)
+    {
+      if (ghb[i] == addr && ghb[(i+1) % GHB_SIZE] != 0)
+      {
+        md_addr_t pf_addr = CACHE_TAGSET(cp, ghb[(i+1) % GHB_SIZE]);
+        if (cache_probe(cp, pf_addr) == 0)
+        {
+          cache_access(cp, Read, pf_addr, NULL, cp->bsize, 0, NULL, NULL, 1);
+          break;
+        }
+      }
+    }
+  }
+}
+
+
+/****************************************************************/
+/* Stride Prefetcher */
+static rpt_entry* rpt;
+
+void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
+  if (rpt == NULL) {
+    // Using calloc() to initialize all entries to 0 (INIT state)
+    rpt = calloc(cp->prefetch_type, sizeof(rpt_entry));
+    if (rpt == NULL) {
+      fatal("out of virtual memory");
+    }
+  }
+
+  md_addr_t pc = get_PC();
+  int zero_bits = log_base2(sizeof(byte_t)*8);
+  int rpt_index = (pc >> zero_bits) % (cp->prefetch_type);
+  rpt_entry* entry = &(rpt[rpt_index]);
+  update_entry(entry, addr, pc);
 
   if (entry->state != NO_PREDICTION) {
     md_addr_t pf_addr = CACHE_TAGSET(cp, addr + entry->stride);
@@ -620,6 +681,7 @@ void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
 }
 
 /* ECE552 Assignment 4 - END CODE */
+/********************************************************************************************************************************/
 
 /* cache x might generate a prefetch after a regular cache access to address addr */
 void generate_prefetch(struct cache_t *cp, md_addr_t addr) {
