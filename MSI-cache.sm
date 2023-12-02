@@ -392,6 +392,7 @@ machine(L1Cache, "MSI L1 Cache")
       out_msg.Destination.add(map_Address_to_Directory(address));
       out_msg.DataBlk := cache_entry.DataBlk;
       out_msg.MessageSize := MessageSizeType:Data;
+      DPRINTF(RubySlicc,"send PUTS for address: %s, from machine: %s\n", out_msg.Address, out_msg.Requestor);
     }
   }
 
@@ -711,10 +712,10 @@ machine(L1Cache, "MSI L1 Cache")
   }
 
   transition(S, Replacement, SI_A) {
-    v_allocateTBE;
-    x_copyDataFromCacheToTBE
     bs_issuePUTS;
-    m_popMandatoryQueue;
+    v_allocateTBE;
+    // x_copyDataFromCacheToTBE;
+    // m_popMandatoryQueue;
   }
 
   transition(S, Inv, I) {
@@ -799,10 +800,10 @@ machine(L1Cache, "MSI L1 Cache")
   }
 
   transition(M, Replacement, MI_A) {
-    v_allocateTBE;
-    x_copyDataFromCacheToTBE
     bm_issuePUTM;
-    m_popMandatoryQueue;
+    v_allocateTBE;
+    x_copyDataFromCacheToTBE;
+    //m_popMandatoryQueue;
   }
 
   transition(M, Fwd_GetS, S) {
@@ -842,6 +843,7 @@ machine(L1Cache, "MSI L1 Cache")
   }
 
   // In transient SI_A state:
+
   transition(SI_A, Inv, II_A) {
     fi_sendInvAck;
     o_popForwardedRequestQueue;
